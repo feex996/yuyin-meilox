@@ -45,19 +45,24 @@ jobs:
         with:
           gradle-version: current
 
-      - name: Build debug APK
+      - name: Build release APK (R8 优化，比 debug 流畅很多)
         run: >-
-          gradle assembleDebug
+          gradle assembleRelease
           -Pglasmio.source=true
           -Pmei.applicationId=com.feex996.yuyin
           -Pmei.buildCommitSha=${{ github.sha }}
           -Pmei.ciRunNumber=${{ github.run_number }}
           -Pmei.ciRunAttempt=${{ github.run_attempt }}
 
-      - name: Rename APK
+      - name: Sign APK
         run: |
-          apk=$(ls app/build/outputs/apk/debug/*.apk | head -n1)
-          mv "$apk" "yuyin-${{ github.run_number }}.apk"
+          bt="$ANDROID_HOME/build-tools/37.0.0"
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -n1)
+          "$bt/zipalign" -f -p 4 "$apk" aligned.apk
+          "$bt/apksigner" sign --ks signing/yuyin-release.p12 --ks-type PKCS12 \
+            --ks-pass pass:yuyin-release --ks-key-alias yuyin \
+            --out "yuyin-${{ github.run_number }}.apk" aligned.apk
+          "$bt/apksigner" verify "yuyin-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -72,5 +77,5 @@ jobs:
           gh release create "$tag" "yuyin-${{ github.run_number }}.apk" \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" \
             --title "余音 #${{ github.run_number }}" \
-            --notes "基于 MeiloX（GPL-3.0）。预装网易云 + GD音乐台 音源，已开启自动切换播放音源。GD音乐台接口仅限个人学习非商用。" \
+            --notes "基于 MeiloX（GPL-3.0）。预装网易云 + GD音乐台 音源，已开启自动切换播放音源。Release 版（R8 优化）。GD音乐台接口仅限个人学习非商用。" \
             --latest
