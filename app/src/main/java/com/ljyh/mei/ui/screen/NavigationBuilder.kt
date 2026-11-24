@@ -44,6 +44,7 @@ import com.ljyh.mei.ui.screen.setting.GeneralSettings
 import com.ljyh.mei.ui.screen.setting.LocalMcpSettings
 import com.ljyh.mei.ui.screen.setting.PlaySetting
 import com.ljyh.mei.ui.screen.setting.EqualizerSettings
+import com.ljyh.mei.ui.screen.setting.SoundFxSettings
 import com.ljyh.mei.ui.screen.setting.LyricsSettings
 import com.ljyh.mei.ui.screen.setting.SettingScreen
 import com.ljyh.mei.ui.screen.log.LogScreen
@@ -250,6 +251,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(Screen.EqualizerSettings.route) {
         EqualizerSettings()
+    }
+    composable(Screen.SoundFxSettings.route) {
+        SoundFxSettings()
     }
 
     composable(Screen.DownloadSettings.route) {
@@ -523,6 +527,7 @@ fun navigationEntry(
         path == Screen.ContentSettings.route -> ContentsSetting(scrollBehavior)
         path == Screen.PlaySettings.route -> PlaySetting(scrollBehavior)
         path == Screen.EqualizerSettings.route -> EqualizerSettings()
+        path == Screen.SoundFxSettings.route -> SoundFxSettings()
         path == Screen.DownloadSettings.route -> DownloadSetting(scrollBehavior)
         path == Screen.StorageManagement.route -> StorageManagementScreen()
         path == Screen.SourceManagement.route -> com.ljyh.mei.ui.screen.source.SourceManagementScreen()

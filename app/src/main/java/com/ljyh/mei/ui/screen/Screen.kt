@@ -36,6 +36,7 @@ sealed class Screen(val route:String) {
     data object LyricsSettings:Screen("setting/lyrics")
     data object PlaySettings:Screen("setting/play")
     data object EqualizerSettings:Screen("setting/equalizer")
+    data object SoundFxSettings:Screen("setting/soundfx")
     data object DownloadSettings:Screen("setting/download")
     data object StorageManagement:Screen("setting/storage")
     data object SourceManagement:Screen("setting/sources")

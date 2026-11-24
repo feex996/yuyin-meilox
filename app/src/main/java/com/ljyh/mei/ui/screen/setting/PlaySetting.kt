@@ -146,6 +146,12 @@ fun PlaySetting(
                     enabled = !usbBitPerfect,
                     onClick = { Screen.EqualizerSettings.navigate(navController) },
                 )
+                GlasmioListRow(
+                    title = "音效",
+                    systemName = "hifispeaker.and.homepod.fill",
+                    enabled = !usbBitPerfect,
+                    onClick = { Screen.SoundFxSettings.navigate(navController) },
+                )
                 ToggleRow(stringResource(R.string.loop_playback), "arrow.trianglehead.2.clockwise.rotate.90", loopPlayback, onLoopPlaybackChange)
                 ToggleRow(
                     stringResource(R.string.allow_concurrent_playback), "waveform",

@@ -175,6 +175,7 @@ class MusicService : MediaLibraryService(),
     internal val autoMixTracks get() = autoMixController.mixTracks
     internal fun incomingMixPositionMs() = autoMixController.incomingVisualPositionMs()
     private lateinit var equalizerConfigurationState: EqualizerConfigurationState
+    private lateinit var soundFxConfigurationState: SoundFxConfigurationState
     private lateinit var usbAudioOutput: UsbAudioOutput
     val audioOutputStatus get() = usbAudioOutput.status
     private var audioOutputMode = AudioOutputMode.AudioTrack
@@ -299,6 +300,7 @@ class MusicService : MediaLibraryService(),
         }
         playbackHistoryReporter = PlaybackHistoryReporter(sourceFeatures)
         equalizerConfigurationState = EqualizerConfigurationState(this, scope)
+        soundFxConfigurationState = SoundFxConfigurationState(this, scope)
         usbAudioOutput = UsbAudioOutput(this) {
             scope.launch {
                 if (::player.isInitialized && audioOutputMode == AudioOutputMode.UsbBitPerfect) {
@@ -1733,6 +1735,7 @@ class MusicService : MediaLibraryService(),
         autoMixController.release()
         if (::audioPlayer.isInitialized) audioPlayer.release()
         equalizerConfigurationState.release()
+        soundFxConfigurationState.release()
         listenTogetherStore.detachPlayer(player)
 
         closeAudioEffectSession()
@@ -1863,7 +1866,11 @@ class MusicService : MediaLibraryService(),
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
                             if (mode == AudioOutputMode.UsbBitPerfect) emptyArray()
-                            else arrayOf(TenBandEqualizerProcessor(equalizerConfigurationState)),
+                            else arrayOf(
+                                TenBandEqualizerProcessor(equalizerConfigurationState),
+                                StereoWidenerProcessor(soundFxConfigurationState),
+                                BassShelfProcessor(soundFxConfigurationState),
+                            ),
                             SilenceSkippingAudioProcessor(2_000_000, 0.01f, 2_000_000, 0, 256),
                             SonicAudioProcessor(),
                         ),
