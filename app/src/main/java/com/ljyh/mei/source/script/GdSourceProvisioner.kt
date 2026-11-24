@@ -16,6 +16,7 @@ import java.util.zip.ZipInputStream
 internal object GdSourceProvisioner {
     const val GD_ID = "xyz.gdstudio.music"
     private const val MARKER = ".gd-default-v1"
+    private const val SEARCH_MARKER = ".gd-search-follow-v1"
     private const val ASSET = "music-sources/gd-music.meisource"
     private val allowed = setOf("manifest.json", "index.js", "LICENSE", "NOTICE")
 
@@ -38,6 +39,23 @@ internal object GdSourceProvisioner {
             }
             mark(root, "installed")
         } finally { temporary.deleteRecursively() }
+    }
+
+    /**
+     * 一次性迁移（1.2.0 起）：旧版本里首页「切换音源」只改浏览源，搜索仍走默认的网易云。
+     * 若用户之前已在首页选了 GD音乐台、而搜索源还不是 GD，则把搜索源也设为 GD。
+     * 不改默认值、不改回退顺序、不碰 autoFallback；没选 GD 的用户不受影响。
+     */
+    suspend fun syncSearchWithBrowse(context: Context, root: File) {
+        val marker = File(root, SEARCH_MARKER)
+        if (marker.exists()) return
+        if (File(root, GD_ID).isDirectory) {
+            com.ljyh.mei.source.core.SourcePreferences(context.dataStore).update {
+                if (it.preferredBrowseProvider == GD_ID && it.preferredSearchProvider != GD_ID)
+                    it.copy(preferredSearchProvider = GD_ID) else it
+            }
+        }
+        marker.writeText("done")
     }
 
     /**

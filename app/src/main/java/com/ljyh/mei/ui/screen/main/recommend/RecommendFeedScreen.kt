@@ -170,6 +170,7 @@ fun RecommendFeedScreen(viewModel: RecommendFeedViewModel = hiltViewModel()) {
                     onRecommend = { scope.launch { drawerState.close() } },
                     onTab = { index -> closeThen { navigation?.openTab?.invoke(index) } },
                     onSearch = { closeThen { navigation?.openSearch?.invoke() } },
+                    onShuffle = { closeThen { viewModel.shuffleNew() } },
                 )
             },
         ) {
@@ -180,7 +181,7 @@ fun RecommendFeedScreen(viewModel: RecommendFeedViewModel = hiltViewModel()) {
                     .leftEdgeSwipeToOpen(enabled = isCurrent && !drawerOpening, rtl = rtl, onOpen = openDrawer),
             ) {
                 when {
-                    state.tracks.isNotEmpty() && player != null -> key(state.providerId) {
+                    state.tracks.isNotEmpty() && player != null -> key(state.providerId, state.batch) {
                         RecommendPager(state, player, viewModel, isCurrent)
                     }
                     state.loading || state.tracks.isNotEmpty() -> RecommendLoading()
@@ -198,6 +199,7 @@ fun RecommendFeedScreen(viewModel: RecommendFeedViewModel = hiltViewModel()) {
                 }
                 RecommendTopBar(
                     onMenu = openDrawer,
+                    onShuffle = viewModel::shuffleNew,
                     onSearch = { navigation?.openSearch?.invoke() },
                 )
             }
@@ -245,7 +247,7 @@ private fun Modifier.leftEdgeSwipeToOpen(enabled: Boolean, rtl: Boolean, onOpen:
     }
 
 @Composable
-private fun RecommendTopBar(onMenu: () -> Unit, onSearch: () -> Unit) {
+private fun RecommendTopBar(onMenu: () -> Unit, onShuffle: () -> Unit, onSearch: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -262,6 +264,16 @@ private fun RecommendTopBar(onMenu: () -> Unit, onSearch: () -> Unit) {
             SfIcon("line.3.horizontal", contentDescription = null, size = 18.dp, tint = Color.White.copy(alpha = 0.92f))
         }
         Spacer(Modifier.weight(1f))
+        // 余音：「换一批」——换一组随机关键词重新生成推荐流。
+        RoundButton(
+            size = 40.dp,
+            background = Color.Black.copy(alpha = 0.28f),
+            description = stringResource(R.string.recommend_shuffle),
+            onClick = onShuffle,
+        ) {
+            SfIcon("shuffle", contentDescription = null, size = 18.dp, tint = Color.White.copy(alpha = 0.92f))
+        }
+        Spacer(Modifier.width(12.dp))
         RoundButton(
             size = 40.dp,
             background = Color.Black.copy(alpha = 0.28f),
@@ -279,6 +291,7 @@ private fun RecommendDrawerSheet(
     onRecommend: () -> Unit,
     onTab: (Index) -> Unit,
     onSearch: () -> Unit,
+    onShuffle: () -> Unit,
 ) {
     val itemColors = NavigationDrawerItemDefaults.colors(
         selectedContainerColor = Color.White.copy(alpha = 0.14f),
@@ -329,6 +342,16 @@ private fun RecommendDrawerSheet(
                 },
                 selected = false,
                 onClick = onSearch,
+                colors = itemColors,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.recommend_shuffle), fontSize = 16.sp) },
+                icon = {
+                    SfIcon("shuffle", contentDescription = null, size = 20.dp, tint = Color.White.copy(alpha = 0.78f))
+                },
+                selected = false,
+                onClick = onShuffle,
                 colors = itemColors,
                 modifier = Modifier.padding(vertical = 2.dp),
             )
@@ -404,6 +427,11 @@ private fun RecommendPager(
                 val ownIndex = if (player.queueTitle.value == queueTitle) list.indexOfFirst { it.mediaId == playingId } else -1
                 if (ownIndex >= 0) {
                     pagerState.scrollToPage(ownIndex)
+                    return@collect
+                }
+                // 「换一批」后，正在播的是旧一批推荐时直接切到新一批第一首；正在播别的歌单则仍不打断。
+                if (state.forcePlay && player.queueTitle.value == queueTitle) {
+                    playAt(page)
                     return@collect
                 }
                 if (player.player.playWhenReady && player.player.mediaItemCount > 0) return@collect

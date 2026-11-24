@@ -150,10 +150,10 @@ class SourceSearchViewModel @Inject constructor(
         request?.cancel()
         generation++
         viewModelScope.launch {
-            preferences.update {
-                if (browseMode.value) it.copy(preferredBrowseProvider = providerId)
-                else it.copy(preferredSearchProvider = providerId)
-            }
+            if (browseMode.value) {
+                val searchable = searchableProviders(listOfNotNull(router.registry.provider(providerId))).isNotEmpty()
+                preferences.selectBrowseProvider(providerId, searchable)
+            } else preferences.update { it.copy(preferredSearchProvider = providerId) }
         }
     }
 

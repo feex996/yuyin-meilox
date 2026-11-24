@@ -161,7 +161,7 @@ fun SearchResultScreen(
             else if (selectedType == SearchType.Song) SourceTrackResults(state, providers,
                 onPlay = { tracks, index -> playTracks(tracks.map { it.toMediaMetadata() }, index) },
                 onLoadMore = viewModel::loadMore, onRetry = { viewModel.search(submittedQuery, force = true) },
-                onSongMore = onTrackMore, showProviderName = false, menuAnchorState = trackMenuAnchor)
+                onSongMore = onTrackMore, showProviderName = true, menuAnchorState = trackMenuAnchor)
             else {
                 sourceContentItems(state.items, providers, { navigateSourceContent(navController, it) },
                     { tracks, index -> playTracks(tracks.map { it.toMediaMetadata() }, index) },

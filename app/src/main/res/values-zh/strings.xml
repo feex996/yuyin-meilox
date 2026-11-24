@@ -1163,4 +1163,5 @@
     <string name="recommend_menu">菜单</string>
     <string name="recommend_open_menu">打开导航菜单</string>
     <string name="recommend_search">搜索</string>
+    <string name="recommend_shuffle">换一批</string>
 </resources>

@@ -294,7 +294,10 @@ class SourceContentViewModel internal constructor(
             ?.shareResourceLink(SourceShareResource(ref, kind, title, null, null))
     }
 
-    fun selectProvider(id: String) { viewModelScope.launch { preferences.update { it.copy(preferredBrowseProvider = id) } } }
+    fun selectProvider(id: String) {
+        val searchable = com.ljyh.mei.ui.screen.search.searchableProviders(listOfNotNull(registry.provider(id))).isNotEmpty()
+        viewModelScope.launch { preferences.selectBrowseProvider(id, searchable) }
+    }
     fun dismissMessage() { mutableMessage.value = null }
     fun provider(id: String = state.value.providerId): MusicProvider? = registry.provider(id)
     fun pluginId(id: String = state.value.providerId): String? = installedPlugins.value

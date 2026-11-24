@@ -41,6 +41,14 @@ class SourcePreferences internal constructor(private val store: DataStore<Prefer
             prefs[key] = gson.toJson(transform(old))
         }
     }
+    /**
+     * 余音：用户在首页/浏览页的「切换音源」里选源时，搜索源跟着切到同一个源（该源支持搜索时），
+     * 避免「首页选了 GD音乐台，搜索仍走网易云」。设置页里两个默认源仍可分别设置；默认值不变。
+     */
+    suspend fun selectBrowseProvider(providerId: String, searchable: Boolean) = update {
+        if (searchable) it.copy(preferredBrowseProvider = providerId, preferredSearchProvider = providerId)
+        else it.copy(preferredBrowseProvider = providerId)
+    }
     suspend fun bind(origin: TrackRef, target: TrackRef) = update {
         it.copy(manualMatches = it.manualMatches + (TrackRefCodec.encode(origin) + "|" + target.providerId to TrackRefCodec.encode(target)))
     }
