@@ -425,7 +425,7 @@ class MainActivity : ComponentActivity() {
             val colorfulPageBackgrounds = navigationPreferences?.let {
                 it[com.ljyh.mei.constants.ColorfulDetailBackgroundsKey] ?: true
             } ?: false
-            val keepBottomBarExpanded = navigationPreferences?.get(KeepBottomBarExpandedKey) ?: false
+            val keepBottomBarExpanded = navigationPreferences?.get(KeepBottomBarExpandedKey) ?: true
             val horizontalSafeAreaEnabled = navigationPreferences?.get(HorizontalSafeAreaEnabledKey) ?: true
             val bottomFloatingContentExtraSpacing =
                 (navigationPreferences?.get(BottomFloatingContentExtraSpacingKey)

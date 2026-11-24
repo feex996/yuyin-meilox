@@ -1,0 +1,7 @@
+# 余音：整包预编译（App 本体 + Glasmio 液态玻璃库 + 歌词组件），换取切页/滑动流畅
+HSPLcom/ljyh/mei/**->**(**)**
+Lcom/ljyh/mei/**;
+HSPLio/github/neoruaa/glasmio/**->**(**)**
+Lio/github/neoruaa/glasmio/**;
+HSPLio/github/proify/lyricon/**->**(**)**
+Lio/github/proify/lyricon/**;

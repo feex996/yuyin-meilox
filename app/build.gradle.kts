@@ -188,6 +188,8 @@ ksp {
 }
 
 dependencies {
+    // 余音：安装时按基线配置预编译，减少切页和滑动时的 JIT 卡顿
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     val glasmioVersion = providers.gradleProperty("glasmio.version").orElse("0.1.3")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("io.github.dokar3:quickjs-kt:1.0.18")

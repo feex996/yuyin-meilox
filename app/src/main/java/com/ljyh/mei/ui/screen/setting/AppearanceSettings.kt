@@ -111,7 +111,7 @@ fun AppearanceSettings(
     val (playlistHeader, setPlaylistHeader) = rememberPreference(PlaylistTrackTableHeaderKey, false)
     val (libraryStyle, setLibraryStyle) = rememberEnumPreference(LibraryStyleKey, LibraryStyle.Default)
     val (libraryDefaultPage, setLibraryDefaultPage) = rememberPreference(LibraryDefaultPageKey, "")
-    val (keepBottomBarExpanded, setKeepBottomBarExpanded) = rememberPreference(KeepBottomBarExpandedKey, false)
+    val (keepBottomBarExpanded, setKeepBottomBarExpanded) = rememberPreference(KeepBottomBarExpandedKey, true)
     val (horizontalSafeAreaEnabled, setHorizontalSafeAreaEnabled) =
         rememberPreference(HorizontalSafeAreaEnabledKey, true)
     val (bottomFloatingExtraSpacing, setBottomFloatingExtraSpacing) =
