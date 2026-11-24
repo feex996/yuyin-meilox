@@ -1,10 +1,17 @@
 package com.ljyh.mei.ui.screen.main.recommend
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +30,12 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,10 +60,14 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +76,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -83,16 +101,20 @@ import com.ljyh.mei.ui.local.LocalOpenFullPlayer
 import com.ljyh.mei.ui.local.LocalPageAppearance
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
+import com.ljyh.mei.ui.local.LocalYuyinNavigation
 import com.ljyh.mei.ui.navigation.MeiloXImmersivePageHeader
+import com.ljyh.mei.ui.screen.Index
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.source.SourceContentViewModel
 import com.ljyh.mei.ui.screen.source.SourceTrackActions
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.core.defaultGlassColors
 import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private val RecommendBaseColor = Color(0xFF111114)
 
@@ -118,17 +140,204 @@ fun RecommendFeedScreen(viewModel: RecommendFeedViewModel = hiltViewModel()) {
         LocalContentColor provides Color.White,
     ) {
         MeiloXImmersivePageHeader()
-        Box(Modifier.fillMaxSize().background(RecommendBaseColor)) {
-            when {
-                state.tracks.isNotEmpty() && player != null -> key(state.providerId) {
-                    RecommendPager(state, player, viewModel, isCurrent)
+        val drawerState = rememberDrawerState(DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+        val navigation = LocalYuyinNavigation.current
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+        val drawerOpening = drawerState.isOpen || drawerState.targetValue == DrawerValue.Open
+        // 系统返回键：抽屉打开时先关抽屉。
+        BackHandler(enabled = isCurrent && drawerOpening) {
+            scope.launch { drawerState.close() }
+        }
+        // 离开推荐页（切到其他页面/搜索）时抽屉直接收起，回来时不会还开着。
+        LaunchedEffect(isCurrent) {
+            if (!isCurrent && drawerState.currentValue != DrawerValue.Closed) drawerState.snapTo(DrawerValue.Closed)
+        }
+        val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
+        val closeThen: (() -> Unit) -> Unit = { action ->
+            scope.launch {
+                drawerState.close()
+                action()
+            }
+        }
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            // 关闭状态下不开整屏横滑（避免和竖向翻页、横向手势冲突），只由左边缘右滑或菜单按钮打开；打开后可横滑关闭。
+            gesturesEnabled = drawerState.isOpen,
+            scrimColor = Color.Black.copy(alpha = 0.45f),
+            drawerContent = {
+                RecommendDrawerSheet(
+                    onRecommend = { scope.launch { drawerState.close() } },
+                    onTab = { index -> closeThen { navigation?.openTab?.invoke(index) } },
+                    onSearch = { closeThen { navigation?.openSearch?.invoke() } },
+                )
+            },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(RecommendBaseColor)
+                    .leftEdgeSwipeToOpen(enabled = isCurrent && !drawerOpening, rtl = rtl, onOpen = openDrawer),
+            ) {
+                when {
+                    state.tracks.isNotEmpty() && player != null -> key(state.providerId) {
+                        RecommendPager(state, player, viewModel, isCurrent)
+                    }
+                    state.loading || state.tracks.isNotEmpty() -> RecommendLoading()
+                    else -> RecommendFailed(onRetry = viewModel::retry)
                 }
-                state.loading || state.tracks.isNotEmpty() -> RecommendLoading()
-                else -> RecommendFailed(onRetry = viewModel::retry)
+                if (isCurrent && !drawerOpening) {
+                    // 左边缘让出系统返回手势的一段（Android 每侧最多 200dp），保证右滑能打开抽屉。
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .width(EdgeSwipeWidth)
+                            .height(200.dp)
+                            .systemGestureExclusion(),
+                    )
+                }
+                RecommendTopBar(
+                    onMenu = openDrawer,
+                    onSearch = { navigation?.openSearch?.invoke() },
+                )
             }
         }
     }
 }
+
+private val EdgeSwipeWidth = 28.dp
+
+/**
+ * 只认从左边缘开始、明显向右的拖动：在 Initial 阶段观察，判定为右滑才消费并打开抽屉；
+ * 竖向拖动不消费，交给竖向翻页处理。
+ */
+private fun Modifier.leftEdgeSwipeToOpen(enabled: Boolean, rtl: Boolean, onOpen: () -> Unit): Modifier =
+    if (!enabled) this else pointerInput(rtl) {
+        val edge = EdgeSwipeWidth.toPx()
+        val slop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val fromStart = if (rtl) size.width - down.position.x else down.position.x
+            if (fromStart > edge) return@awaitEachGesture
+            var dx = 0f
+            var dy = 0f
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                if (!change.pressed) return@awaitEachGesture
+                val delta = change.positionChange()
+                dx += if (rtl) -delta.x else delta.x
+                dy += delta.y
+                if (abs(dy) > slop && abs(dy) >= abs(dx)) return@awaitEachGesture
+                if (dx > slop && dx > abs(dy) * 1.5f) {
+                    change.consume()
+                    onOpen()
+                    // 吞掉这次手势剩余的移动，避免页面跟着动。
+                    while (true) {
+                        val rest = awaitPointerEvent(PointerEventPass.Initial)
+                        val c = rest.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                        c.consume()
+                        if (!c.pressed) return@awaitEachGesture
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
+private fun RecommendTopBar(onMenu: () -> Unit, onSearch: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RoundButton(
+            size = 40.dp,
+            background = Color.Black.copy(alpha = 0.28f),
+            description = stringResource(R.string.recommend_open_menu),
+            onClick = onMenu,
+        ) {
+            SfIcon("line.3.horizontal", contentDescription = null, size = 18.dp, tint = Color.White.copy(alpha = 0.92f))
+        }
+        Spacer(Modifier.weight(1f))
+        RoundButton(
+            size = 40.dp,
+            background = Color.Black.copy(alpha = 0.28f),
+            description = stringResource(R.string.recommend_search),
+            onClick = onSearch,
+        ) {
+            SfIcon(SfSymbol.Search, contentDescription = null, size = 18.dp, tint = Color.White.copy(alpha = 0.92f))
+        }
+    }
+}
+
+/** 侧边抽屉：深色半透明，不做实时模糊，保证流畅。 */
+@Composable
+private fun RecommendDrawerSheet(
+    onRecommend: () -> Unit,
+    onTab: (Index) -> Unit,
+    onSearch: () -> Unit,
+) {
+    val itemColors = NavigationDrawerItemDefaults.colors(
+        selectedContainerColor = Color.White.copy(alpha = 0.14f),
+        unselectedContainerColor = Color.Transparent,
+        selectedTextColor = Color.White,
+        unselectedTextColor = Color.White.copy(alpha = 0.78f),
+        selectedIconColor = Color.White,
+        unselectedIconColor = Color.White.copy(alpha = 0.78f),
+    )
+    ModalDrawerSheet(
+        modifier = Modifier.width(280.dp),
+        drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+        drawerContainerColor = Color(0xFF17171C).copy(alpha = 0.94f),
+        drawerContentColor = Color.White,
+    ) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = stringResource(R.string.app_name),
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            DrawerEntries.forEach { index ->
+                val selected = index == Index.Recommend
+                NavigationDrawerItem(
+                    label = { Text(stringResource(index.labelRes), fontSize = 16.sp) },
+                    icon = {
+                        SfIcon(
+                            index.symbol,
+                            contentDescription = null,
+                            size = 20.dp,
+                            tint = if (selected) Color.White else Color.White.copy(alpha = 0.78f),
+                        )
+                    },
+                    selected = selected,
+                    onClick = { if (selected) onRecommend() else onTab(index) },
+                    colors = itemColors,
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.app_tab_search), fontSize = 16.sp) },
+                icon = {
+                    SfIcon(SfSymbol.Search, contentDescription = null, size = 20.dp, tint = Color.White.copy(alpha = 0.78f))
+                },
+                selected = false,
+                onClick = onSearch,
+                colors = itemColors,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+private val DrawerEntries = listOf(Index.Recommend, Index.Home, Index.FindMusic, Index.Library, Index.Settings)
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -306,7 +515,7 @@ private fun RecommendPage(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(start = 28.dp, end = 28.dp, top = 20.dp, bottom = bottomPadding + 12.dp),
+            .padding(start = 28.dp, end = 28.dp, top = 64.dp, bottom = bottomPadding + 12.dp),
     ) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             val side = if (maxWidth < maxHeight) maxWidth else maxHeight

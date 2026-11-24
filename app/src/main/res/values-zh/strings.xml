@@ -1160,4 +1160,7 @@
     <string name="recommend_pause">暂停</string>
     <string name="recommend_like">喜欢</string>
     <string name="recommend_open_player">打开播放页</string>
+    <string name="recommend_menu">菜单</string>
+    <string name="recommend_open_menu">打开导航菜单</string>
+    <string name="recommend_search">搜索</string>
 </resources>

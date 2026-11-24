@@ -236,6 +236,8 @@ import io.github.neoruaa.glasmio.scaffold.resetHeightOffset
 import com.ljyh.mei.ui.local.LocalDatabase
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import com.ljyh.mei.ui.local.LocalYuyinNavigation
+import com.ljyh.mei.ui.local.YuyinNavigation
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.local.LocalPageAppearance
 import com.ljyh.mei.ui.local.LocalColorfulPageBackgrounds
@@ -691,6 +693,8 @@ class MainActivity : ComponentActivity() {
                         else windowsInsets.only(WindowInsetsSides.Vertical)
                     val navigationInsets = WindowInsets.navigationBars
                     val currentRoute = navController.currentRoute
+                    // 余音：「推荐」是沉浸式单曲流，隐藏底部标签栏/搜索按钮/迷你播放器，改用页面内侧边抽屉导航。
+                    val recommendImmersive = currentRoute == Screen.Recommend.route
                     val handlesKeyboardInsets = active || currentRoute == Screen.Search.route ||
                         currentRoute?.startsWith("${Screen.PrivateConversation.route}/") == true ||
                         currentRoute?.startsWith("${Screen.Comment.route}/") == true
@@ -791,7 +795,7 @@ class MainActivity : ComponentActivity() {
                         (currentRoute == null ||
                                 navigationItems.fastAny { it.route == currentRoute } ||
                                 currentRoute == Screen.Search.route) &&
-                                !active
+                                !active && !recommendImmersive
                     SideEffect { navigationScrollAllowed.value = shouldAllowNavigationBar && !isLandscape }
                     // Route visibility must not reset the expanded/compact shape. This keeps a
                     // MiniNav compact while it fades out. The expanded preference overrides
@@ -1113,6 +1117,16 @@ class MainActivity : ComponentActivity() {
                             navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
                         } else navController.navigateTopLevel(screen.route)
                     }
+                    val yuyinNavigation = YuyinNavigation(
+                        openTab = selectNavigationItem,
+                        openSearch = {
+                            focusManager.clearFocus()
+                            focusSearchOnEntry = true
+                            if (navController.currentRoute != Screen.Search.route) {
+                                navController.navigate(Screen.Search.route)
+                            }
+                        },
+                    )
                     val searchToolbarVisible = active && !(isLandscape && adaptiveNavigation.sidebarExpanded)
                     val landscapeTopSearchOverlay = isLandscape && searchToolbarVisible
                     val openFullPlayer: () -> Unit = remember(playerBottomSheetState, selectionToolbar) {
@@ -1127,6 +1141,7 @@ class MainActivity : ComponentActivity() {
                     CompositionLocalProvider(
                         com.ljyh.mei.ui.local.LocalSelectionToolbar provides selectionToolbar,
                         com.ljyh.mei.ui.local.LocalOpenFullPlayer provides openFullPlayer,
+                        LocalYuyinNavigation provides yuyinNavigation,
                         LocalDatabase provides database,
                         LocalNavController provides navController,
                         LocalPlayerConnection provides playerConnection,
@@ -1229,6 +1244,7 @@ class MainActivity : ComponentActivity() {
                                     backdrop = bottomControlsBackdrop,
                                     pageDarkAppearance = pageDarkAppearance,
                                     onBackgroundReadyChanged = onPlayerBackgroundReadyChanged,
+                                    hideCollapsedMiniPlayer = recommendImmersive,
                                 )
                             }
                         },
@@ -1458,7 +1474,8 @@ class MainActivity : ComponentActivity() {
                                             AnimatedVisibility(
                                                 visible = navigationPreferences != null &&
                                                     playerVisibilitySynchronized &&
-                                                    selectionToolbar.content.value == null,
+                                                    selectionToolbar.content.value == null &&
+                                                    !recommendImmersive,
                                                 enter = fadeIn(), exit = fadeOut(),
                                             ) {
                                                 DisposableEffect(Unit) {
@@ -1875,6 +1892,7 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
     backdrop: Backdrop,
     pageDarkAppearance: Boolean?,
     onBackgroundReadyChanged: (Boolean) -> Unit,
+    hideCollapsedMiniPlayer: Boolean = false,
 ) {
     val miniPlayerVerticalOffset = remember(motion, centerTravel, searchVerticalOffset) {
         {
@@ -1898,7 +1916,15 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(1f),
+            .zIndex(1f)
+            // 余音：「推荐」页自带播放控制，收起状态的迷你播放器不放置（不绘制、不拦截触摸）；
+            // 展开/拖动/收起动画期间照常显示，保留播放器状态和打开全屏播放页的能力。
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    if (!hideCollapsedMiniPlayer || state.isContentVisible) placeable.place(0, 0)
+                }
+            },
     ) {
         CompositionLocalProvider(
             // MiniPlayer is rendered by BottomSheetPlayer's collapsed content. Give it the page
@@ -1967,6 +1993,12 @@ private fun playerAwareWindowInsetsForRoute(
     bottomInset: Dp,
     navigationBottomMargin: Dp,
 ): WindowInsets {
+    if (route == Screen.Recommend.route) {
+        // 余音：「推荐」页不显示底部标签栏和迷你播放器，只保留系统导航栏安全区。
+        return windowsInsets
+            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+            .add(WindowInsets(top = 0.dp, bottom = bottomInset))
+    }
     val allowsNavigationBar =
         navigationItems.fastAny { it.route == route } || route == Screen.Search.route
     var bottom = if (allowsNavigationBar || !playerDismissed) navigationBottomMargin else bottomInset

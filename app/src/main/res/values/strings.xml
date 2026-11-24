@@ -1166,4 +1166,7 @@
     <string name="recommend_pause">Pause</string>
     <string name="recommend_like">Like</string>
     <string name="recommend_open_player">Open player</string>
+    <string name="recommend_menu">Menu</string>
+    <string name="recommend_open_menu">Open navigation menu</string>
+    <string name="recommend_search">Search</string>
 </resources>
