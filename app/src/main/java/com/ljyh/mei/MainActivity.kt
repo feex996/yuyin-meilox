@@ -592,7 +592,7 @@ class MainActivity : ComponentActivity() {
             val navigationScrollAllowed = remember { mutableStateOf(false) }
             val scrollSheet = scrollPlayerSheet.value
             val navigationScroll = rememberMeiloXNavigationScrollState(
-                viewport = pageHeaders.entry(navController.currentRoute ?: Screen.Home.route).viewport,
+                viewport = pageHeaders.entry(navController.currentRoute ?: Screen.Recommend.route).viewport,
                 enabled = navigationScrollAllowed.value && !active && !keepBottomBarExpanded &&
                     (scrollSheet == null || scrollSheet.isCollapsed || scrollSheet.isDismissed),
             )
@@ -759,7 +759,6 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val available = buildList {
                             add(Index.Recommend)
-                            add(Index.Home)
                             if (findMusicTabEnabled) add(Index.FindMusic)
                             if (podcastsEnabled && podcastsTabEnabled) add(Index.Podcasts)
                             if (libraryTabEnabled) add(Index.Library)
@@ -780,8 +779,6 @@ class MainActivity : ComponentActivity() {
                                 else ordered.add(item)
                             }
                         }
-                        ordered.remove(Index.Home)
-                        ordered.add(0, Index.Home)
                         ordered.remove(Index.Recommend)
                         ordered.add(0, Index.Recommend)
                         ordered.remove(Index.Settings)
@@ -1103,7 +1100,7 @@ class MainActivity : ComponentActivity() {
                     }
                     val selectedNavigationItem = navigationItems.firstOrNull { it.route == currentRoute }
                         ?: navigationItems.firstOrNull { it.name == lastSelectedTab }
-                        ?: Index.Home
+                        ?: Index.Recommend
                     val sidebarLibraryPages = remember(podcastsEnabled) {
                         LibraryPage.entries.filter { it != LibraryPage.Podcasts || podcastsEnabled }
                     }
@@ -1457,7 +1454,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                     val selectedIndex = navigationItems.firstOrNull { it.route == currentRoute }
                                         ?: navigationItems.firstOrNull { it.name == lastSelectedTab }
-                                        ?: Index.Home
+                                        ?: Index.Recommend
                                     val navigationTabs = navigationItems.map { item ->
                                         GlasmioTabItem(
                                             key = item,
@@ -1634,7 +1631,7 @@ class MainActivity : ComponentActivity() {
 
                         val selectedIndex = navigationItems.firstOrNull { it.route == currentRoute }
                             ?: navigationItems.firstOrNull { it.name == lastSelectedTab }
-                            ?: Index.Home
+                            ?: Index.Recommend
                         val navigationTabs = navigationItems.map { item ->
                             GlasmioTabItem(
                                 key = item,

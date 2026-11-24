@@ -211,7 +211,7 @@ class MainNavigationInstrumentedTest {
         compose.waitForIdle()
         val pageTag = "MeiloXPage:${Index.Settings.route}"
         val list = compose.onNode(hasScrollToNodeAction() and hasAnyAncestor(hasTestTag(pageTag)))
-        val homeTab = hasContentDescription(text(Index.Home.labelRes)) and
+        val homeTab = hasContentDescription(text(Index.Recommend.labelRes)) and
             SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
         list.performTouchInput { swipeUp(durationMillis = 700L) }
         compose.waitUntil(10_000) {
@@ -314,8 +314,8 @@ class MainNavigationInstrumentedTest {
 
     @Test
     fun primaryDestinationsRemainTopLevelAfterRecreation() = withNavigationPreferences {
-        (listOf(Index.Home, Index.Settings) + optionalTabs.keys).forEach { destination ->
-            openTab(Index.Home)
+        (listOf(Index.Recommend, Index.Settings) + optionalTabs.keys).forEach { destination ->
+            openTab(Index.Recommend)
             showOnlyOptionalTab(destination)
             openTab(destination)
             assertDestinationChrome(destination, topLevel = true)
@@ -340,7 +340,7 @@ class MainNavigationInstrumentedTest {
             assertDestinationChrome(destination, topLevel = false)
             setPreference(key, true)
             assertDestinationChrome(destination, topLevel = true)
-            openTab(Index.Home)
+            openTab(Index.Recommend)
         }
     }
 
@@ -447,7 +447,7 @@ class MainNavigationInstrumentedTest {
                 }
             }
             showOnlyOptionalTab(null)
-            assertDestinationChrome(Index.Home, topLevel = true)
+            assertDestinationChrome(Index.Recommend, topLevel = true)
             block()
         } finally {
             runBlocking(Dispatchers.IO) {

@@ -360,7 +360,7 @@ private fun RecommendDrawerSheet(
     }
 }
 
-private val DrawerEntries = listOf(Index.Recommend, Index.Home, Index.FindMusic, Index.Library, Index.Settings)
+private val DrawerEntries = listOf(Index.Recommend, Index.FindMusic, Index.Library, Index.Settings)
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable

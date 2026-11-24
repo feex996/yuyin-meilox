@@ -83,7 +83,7 @@ sealed class Screen(val route:String) {
 
     companion object {
         val MainScreens: List<Screen>
-            get() = listOf(Recommend, Home, FindMusic, Podcasts, Library, DownloadManage, CloudMusic, History, Search, Setting)
+            get() = listOf(Recommend, FindMusic, Podcasts, Library, DownloadManage, CloudMusic, History, Search, Setting)
     }
 }
 
@@ -94,7 +94,6 @@ enum class Index(
     val requiredFeature: ContentFeature? = null,
 ) {
     Recommend(Screen.Recommend.route, R.string.app_tab_recommend, SfSymbol.Sparkles),
-    Home(Screen.Home.route, R.string.app_tab_home, SfSymbol.HouseFilled),
     FindMusic(Screen.FindMusic.route, R.string.app_tab_explore, SfSymbol.SafariFilled),
     Podcasts(Screen.Podcasts.route, R.string.app_tab_podcasts, SfSymbol.RadioFilled, ContentFeature.Podcasts),
     Library(Screen.Library.route, R.string.app_tab_library, SfSymbol.MusicNoteSquareStackFilled),
@@ -107,7 +106,7 @@ enum class Index(
     ;
 
     companion object {
-        val DefaultOrder = listOf(Recommend, Home, FindMusic, Library, Settings)
+        val DefaultOrder = listOf(Recommend, FindMusic, Library, Settings)
     }
 }
 

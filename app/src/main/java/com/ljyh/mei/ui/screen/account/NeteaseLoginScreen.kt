@@ -198,7 +198,7 @@ fun NeteaseWebLoginScreen(viewModel: NeteaseLoginViewModel = hiltViewModel()) {
 
 internal fun MeiNavigator.finishNeteaseLogin() {
     // A successful login leaves both the entry page and its WebView child behind.
-    navigateTopLevel(Screen.Home.route)
+    navigateTopLevel(Screen.Recommend.route)
 }
 
 @Composable
