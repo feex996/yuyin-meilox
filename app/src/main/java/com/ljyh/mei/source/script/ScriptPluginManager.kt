@@ -79,9 +79,19 @@ class ScriptPluginManager @Inject constructor(
         try { GdSourceProvisioner.syncSearchWithBrowse(context, root) }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { }
+        // 余音：额外预装 QQ 音乐 音源（需用户登录账号后体验完整能力），失败不影响其他音源。
+        try { QqSourceProvisioner.ensure(context, root) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { }
         // 余音：App 内置了更新版本的 GD音乐台 时，用同一套安装事务原地升级（未被用户移除才升级；保留配置/启用状态）。
         if (GdSourceProvisioner.GD_ID !in incomplete) {
             try { upgradeBundledGdLocked() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { }
+        }
+        // 余音：同上，对 QQ 音乐 做内置包升级。
+        if (QqSourceProvisioner.QQ_ID !in incomplete) {
+            try { upgradeBundledQqLocked() }
             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { }
         }
@@ -117,6 +127,17 @@ class ScriptPluginManager @Inject constructor(
     private fun upgradeBundledGdLocked() {
         val workDirectory = File(context.cacheDir, "source-import").apply { mkdirs() }
         val (manifest, directory) = GdSourceProvisioner.prepareUpgrade(context, root, workDirectory) ?: return
+        try {
+            installLocked(PreparedPlugin(manifest, directory, fingerprint(directory)), repository = null)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /** Caller holds [mutex]. Failures keep the installed QQ version. */
+    private fun upgradeBundledQqLocked() {
+        val workDirectory = File(context.cacheDir, "source-import").apply { mkdirs() }
+        val (manifest, directory) = QqSourceProvisioner.prepareUpgrade(context, root, workDirectory) ?: return
         try {
             installLocked(PreparedPlugin(manifest, directory, fingerprint(directory)), repository = null)
         } finally {
@@ -348,6 +369,7 @@ class ScriptPluginManager @Inject constructor(
         val provider = providers[id] ?: invalid("Source is not installed")
         if (id == BundledSourceProvisioner.NETEASE_ID) BundledSourceProvisioner.removed(root)
         if (id == GdSourceProvisioner.GD_ID) GdSourceProvisioner.removed(root)
+        if (id == QqSourceProvisioner.QQ_ID) QqSourceProvisioner.removed(root)
         changeSource(id) { _, _ ->
             try {
                 providers.remove(id)
