@@ -178,7 +178,7 @@ fun ContentsSetting(
             .toMutableList()
             .apply { Index.entries.forEach { if (it !in this) add(it) } }
         val reorderable = currentOrder.filter {
-            it != Index.Home && it != Index.Settings && it != Index.Search
+            it != Index.Recommend && it != Index.Home && it != Index.Settings && it != Index.Search
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

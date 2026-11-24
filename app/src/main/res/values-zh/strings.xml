@@ -1148,4 +1148,16 @@
     <string name="widget_universal">万能小组件</string>
     <string name="widget_universal_description">选择在桌面显示的音乐内容或快捷入口。</string>
     <string name="widget_universal_playlists">发现歌单</string>
+    <string name="app_tab_recommend">推荐</string>
+    <string name="recommend_queue_title">为你推荐</string>
+    <string name="recommend_loading">正在挑选歌曲…</string>
+    <string name="recommend_failed">当前音源暂时拿不到推荐歌曲，请检查网络，或在设置里切换音源后重试。</string>
+    <string name="recommend_retry">重试</string>
+    <string name="recommend_added_to_queue">已加入播放队列</string>
+    <string name="recommend_add_to_queue">加入队列</string>
+    <string name="recommend_more">更多</string>
+    <string name="recommend_play">播放</string>
+    <string name="recommend_pause">暂停</string>
+    <string name="recommend_like">喜欢</string>
+    <string name="recommend_open_player">打开播放页</string>
 </resources>

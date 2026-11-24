@@ -1071,4 +1071,16 @@
     <string name="detail_cover_save_failed">無法儲存封面</string>
     <string name="comment_voice">語音留言</string>
     <string name="comment_voice_seconds">語音留言 · %1$d 秒</string>
+    <string name="app_tab_recommend">推薦</string>
+    <string name="recommend_queue_title">為你推薦</string>
+    <string name="recommend_loading">正在挑選歌曲…</string>
+    <string name="recommend_failed">目前音源暫時拿不到推薦歌曲，請檢查網路，或在設定裡切換音源後重試。</string>
+    <string name="recommend_retry">重試</string>
+    <string name="recommend_added_to_queue">已加入播放佇列</string>
+    <string name="recommend_add_to_queue">加入佇列</string>
+    <string name="recommend_more">更多</string>
+    <string name="recommend_play">播放</string>
+    <string name="recommend_pause">暫停</string>
+    <string name="recommend_like">喜歡</string>
+    <string name="recommend_open_player">開啟播放頁</string>
 </resources>

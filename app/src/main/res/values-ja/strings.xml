@@ -1076,4 +1076,16 @@
     <string name="detail_cover_save_failed">カバーを保存できませんでした</string>
     <string name="comment_voice">音声コメント</string>
     <string name="comment_voice_seconds">音声コメント · %1$d 秒</string>
+  <string name="app_tab_recommend">おすすめ</string>
+  <string name="recommend_queue_title">あなたへのおすすめ</string>
+  <string name="recommend_loading">曲を選んでいます…</string>
+  <string name="recommend_failed">このソースからおすすめを取得できません。ネットワークを確認するか、設定でソースを切り替えてください。</string>
+  <string name="recommend_retry">再試行</string>
+  <string name="recommend_added_to_queue">キューに追加しました</string>
+  <string name="recommend_add_to_queue">キューに追加</string>
+  <string name="recommend_more">その他</string>
+  <string name="recommend_play">再生</string>
+  <string name="recommend_pause">一時停止</string>
+  <string name="recommend_like">お気に入り</string>
+  <string name="recommend_open_player">プレーヤーを開く</string>
 </resources>

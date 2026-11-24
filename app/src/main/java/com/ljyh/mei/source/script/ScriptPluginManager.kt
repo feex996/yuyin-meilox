@@ -76,6 +76,12 @@ class ScriptPluginManager @Inject constructor(
         try { GdSourceProvisioner.ensure(context, root) }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { }
+        // 余音：App 内置了更新版本的 GD音乐台 时，用同一套安装事务原地升级（未被用户移除才升级；保留配置/启用状态）。
+        if (GdSourceProvisioner.GD_ID !in incomplete) {
+            try { upgradeBundledGdLocked() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { }
+        }
         root.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith('.') && it.name !in incomplete }.forEach { directory ->
             if (providers.containsKey(directory.name)) return@forEach
             try {
@@ -103,6 +109,17 @@ class ScriptPluginManager @Inject constructor(
         publish()
         } finally { registry.completeInitialization() }
     } }
+
+    /** Caller holds [mutex]. Failures keep the installed GD version. */
+    private fun upgradeBundledGdLocked() {
+        val workDirectory = File(context.cacheDir, "source-import").apply { mkdirs() }
+        val (manifest, directory) = GdSourceProvisioner.prepareUpgrade(context, root, workDirectory) ?: return
+        try {
+            installLocked(PreparedPlugin(manifest, directory, fingerprint(directory)), repository = null)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 
     suspend fun inspect(uri: Uri): PreparedPlugin {
         var completed: PreparedPlugin? = null

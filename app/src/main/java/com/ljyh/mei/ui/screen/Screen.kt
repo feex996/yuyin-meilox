@@ -7,6 +7,7 @@ import com.ljyh.mei.ui.navigation.MeiNavigator
 import com.ljyh.mei.ui.navigation.ContentFeature
 
 sealed class Screen(val route:String) {
+    data object Recommend:Screen("recommend")
     data object Home:Screen("home")
     data object Library:Screen("library")
     data object LibraryCategory:Screen("library_category")
@@ -82,7 +83,7 @@ sealed class Screen(val route:String) {
 
     companion object {
         val MainScreens: List<Screen>
-            get() = listOf(Home, FindMusic, Podcasts, Library, DownloadManage, CloudMusic, History, Search, Setting)
+            get() = listOf(Recommend, Home, FindMusic, Podcasts, Library, DownloadManage, CloudMusic, History, Search, Setting)
     }
 }
 
@@ -92,6 +93,7 @@ enum class Index(
     val symbol: SfSymbol,
     val requiredFeature: ContentFeature? = null,
 ) {
+    Recommend(Screen.Recommend.route, R.string.app_tab_recommend, SfSymbol.Sparkles),
     Home(Screen.Home.route, R.string.app_tab_home, SfSymbol.HouseFilled),
     FindMusic(Screen.FindMusic.route, R.string.app_tab_explore, SfSymbol.SafariFilled),
     Podcasts(Screen.Podcasts.route, R.string.app_tab_podcasts, SfSymbol.RadioFilled, ContentFeature.Podcasts),
@@ -105,7 +107,7 @@ enum class Index(
     ;
 
     companion object {
-        val DefaultOrder = listOf(Home, FindMusic, Library, Settings)
+        val DefaultOrder = listOf(Recommend, Home, FindMusic, Library, Settings)
     }
 }
 

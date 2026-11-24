@@ -416,3 +416,14 @@ fun MeiloXPinnedListPage(
         }
     }
 }
+
+/** 余音：全屏沉浸页面（如「推荐」单曲流）不显示标题和工具栏，只沿用当前页面配色。 */
+@Composable
+internal fun MeiloXImmersivePageHeader() {
+    val header = LocalMeiloXPageHeader.current
+    val colors = LocalGlassColors.current
+    val spec = remember(colors) { GlasmioHeaderSpec(title = "", colors = colors) }
+    SideEffect {
+        if (header != null) header.spec = spec
+    }
+}

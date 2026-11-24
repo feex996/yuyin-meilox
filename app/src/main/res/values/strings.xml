@@ -1154,4 +1154,16 @@
     <string name="widget_universal">Universal Widget</string>
     <string name="widget_universal_description">Choose the music or shortcut shown on your home screen.</string>
     <string name="widget_universal_playlists">Discover Playlists</string>
+    <string name="app_tab_recommend">Discover</string>
+    <string name="recommend_queue_title">For You</string>
+    <string name="recommend_loading">Loading songs…</string>
+    <string name="recommend_failed">Couldn\'t load recommendations from this source. Check your network or switch the audio source in Settings.</string>
+    <string name="recommend_retry">Retry</string>
+    <string name="recommend_added_to_queue">Added to queue</string>
+    <string name="recommend_add_to_queue">Add to queue</string>
+    <string name="recommend_more">More</string>
+    <string name="recommend_play">Play</string>
+    <string name="recommend_pause">Pause</string>
+    <string name="recommend_like">Like</string>
+    <string name="recommend_open_player">Open player</string>
 </resources>

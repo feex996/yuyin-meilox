@@ -387,7 +387,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = this@MainActivity
             val lifecycleOwner = LocalLifecycleOwner.current
-            val backStack = rememberNavBackStack(MeiRoute(Screen.Home.route))
+            // 余音：冷启动进入「推荐」全屏单曲流。
+            val backStack = rememberNavBackStack(MeiRoute(Screen.Recommend.route))
             val pageHeaders = remember { MeiloXPageHeaders() }
             val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
             var sidebarLibraryExpanded by rememberSaveable { mutableStateOf(true) }
@@ -412,7 +413,7 @@ class MainActivity : ComponentActivity() {
             val dynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = false)
             val accentColorArgb by rememberPreference(AccentColorKey, DefaultAccentColorArgb)
             val appAppearance by rememberEnumPreference(AppAppearanceKey, AppAppearance.System)
-            val (lastSelectedTab, setLastSelectedTab) = rememberPreference(LastSelectedTabKey, Index.Home.name)
+            val (lastSelectedTab, setLastSelectedTab) = rememberPreference(LastSelectedTabKey, Index.Recommend.name)
             val recognizeClipboardLinks by rememberPreference(RecognizeClipboardLinksKey, false)
             val navigationPreferences by context.dataStore.data
                 .collectAsState<Preferences, Preferences?>(initial = initialPreferences)
@@ -753,6 +754,7 @@ class MainActivity : ComponentActivity() {
                         navigationTabOrder,
                     ) {
                         val available = buildList {
+                            add(Index.Recommend)
                             add(Index.Home)
                             if (findMusicTabEnabled) add(Index.FindMusic)
                             if (podcastsEnabled && podcastsTabEnabled) add(Index.Podcasts)
@@ -776,6 +778,8 @@ class MainActivity : ComponentActivity() {
                         }
                         ordered.remove(Index.Home)
                         ordered.add(0, Index.Home)
+                        ordered.remove(Index.Recommend)
+                        ordered.add(0, Index.Recommend)
                         ordered.remove(Index.Settings)
                         ordered.add(Index.Settings)
                         ordered
@@ -1111,8 +1115,18 @@ class MainActivity : ComponentActivity() {
                     }
                     val searchToolbarVisible = active && !(isLandscape && adaptiveNavigation.sidebarExpanded)
                     val landscapeTopSearchOverlay = isLandscape && searchToolbarVisible
+                    val openFullPlayer: () -> Unit = remember(playerBottomSheetState, selectionToolbar) {
+                        {
+                            lifecycleOwner.lifecycleScope.launch {
+                                selectionToolbar.content.value = null
+                                if (!playerBottomSheetState.isExpanded) playerBottomSheetState.expandSoft()
+                            }
+                            Unit
+                        }
+                    }
                     CompositionLocalProvider(
                         com.ljyh.mei.ui.local.LocalSelectionToolbar provides selectionToolbar,
+                        com.ljyh.mei.ui.local.LocalOpenFullPlayer provides openFullPlayer,
                         LocalDatabase provides database,
                         LocalNavController provides navController,
                         LocalPlayerConnection provides playerConnection,

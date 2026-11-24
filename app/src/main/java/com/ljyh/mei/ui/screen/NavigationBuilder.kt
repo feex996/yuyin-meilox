@@ -80,6 +80,10 @@ fun NavGraphBuilder.navigationBuilder(
     navController: NavHostController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    composable(Screen.Recommend.route) {
+        com.ljyh.mei.ui.screen.main.recommend.RecommendFeedScreen()
+    }
+
     composable(Screen.Home.route) {
         HomeHubScreen()
     }
@@ -467,6 +471,7 @@ fun navigationEntry(
 ) {
     val path = route.substringBefore('?')
     when {
+        path == Screen.Recommend.route -> com.ljyh.mei.ui.screen.main.recommend.RecommendFeedScreen()
         path == Screen.Home.route -> HomeHubScreen()
         path == Screen.Library.route -> LibraryScreen(
             isNavigationTab = isNavigationTab,
