@@ -1,0 +1,76 @@
+name: 余音 APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yuyin-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Glasmio
+        uses: actions/checkout@v4
+        with:
+          repository: NEORUAA/Glasmio
+          path: .glasmio-ci
+          persist-credentials: false
+
+      - name: Place Glasmio beside the app checkout
+        run: mv "$GITHUB_WORKSPACE/.glasmio-ci" "$GITHUB_WORKSPACE/../Glasmio"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+
+      - name: Build debug APK
+        run: >-
+          gradle assembleDebug
+          -Pglasmio.source=true
+          -Pmei.applicationId=com.feex996.yuyin
+          -Pmei.buildCommitSha=${{ github.sha }}
+          -Pmei.ciRunNumber=${{ github.run_number }}
+          -Pmei.ciRunAttempt=${{ github.run_attempt }}
+
+      - name: Rename APK
+        run: |
+          apk=$(ls app/build/outputs/apk/debug/*.apk | head -n1)
+          mv "$apk" "yuyin-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yuyin-${{ github.run_number }}
+          path: yuyin-${{ github.run_number }}.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="yuyin-${{ github.run_number }}"
+          gh release create "$tag" "yuyin-${{ github.run_number }}.apk" \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "余音 #${{ github.run_number }}" \
+            --notes "基于 MeiloX（GPL-3.0）。预装网易云 + GD音乐台 音源，已开启自动切换播放音源。GD音乐台接口仅限个人学习非商用。" \
+            --latest

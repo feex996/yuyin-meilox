@@ -72,6 +72,10 @@ class ScriptPluginManager @Inject constructor(
         catch (_: Exception) {
             mutableStartupError.value = "默认音源恢复失败，可重试或从文件导入"
         }
+        // 余音：在默认音源之外额外预装 GD音乐台，失败不影响其他音源。
+        try { GdSourceProvisioner.ensure(context, root) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { }
         root.listFiles().orEmpty().filter { it.isDirectory && !it.name.startsWith('.') && it.name !in incomplete }.forEach { directory ->
             if (providers.containsKey(directory.name)) return@forEach
             try {
@@ -323,6 +327,7 @@ class ScriptPluginManager @Inject constructor(
     suspend fun uninstall(id: String) = withContext(Dispatchers.IO) { mutex.withLock {
         val provider = providers[id] ?: invalid("Source is not installed")
         if (id == BundledSourceProvisioner.NETEASE_ID) BundledSourceProvisioner.removed(root)
+        if (id == GdSourceProvisioner.GD_ID) GdSourceProvisioner.removed(root)
         changeSource(id) { _, _ ->
             try {
                 providers.remove(id)
