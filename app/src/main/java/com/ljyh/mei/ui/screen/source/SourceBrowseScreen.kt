@@ -46,6 +46,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PageSize
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -53,6 +56,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.abs
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
@@ -489,7 +494,7 @@ private fun LazyListScope.sourceDiscoverItems(
             }
         } else if (section.layout == SourceFeedLayout.TRACKS) {
             item("source-discover-tracks:${section.id}") {
-                SourceFeedSectionContent(section, onOpen, onPlay, onMore, menuAnchorState = menuAnchorState)
+                SourceDiscoverDeck(section, onPlay)
             }
         } else {
             val hero = section.items.firstOrNull()?.takeIf { featured && sectionIndex == 0 && it is SourceItem.PlaylistItem }
@@ -547,6 +552,77 @@ private fun SourceDiscoverCard(item: SourceItem, featured: Boolean, onClick: () 
     }
 }
 
+
+/**
+ * 余音：发现页的堆叠滑动卡片组。
+ * 每个分区一张横向滑动的牌组，当前卡全尺寸居前，前后卡缩小并下沉形成堆叠感；
+ * 点按卡片即播放该分区歌单（从点中的歌开始）。
+ */
+@Composable
+private fun SourceDiscoverDeck(
+    section: SourceFeedSection,
+    onPlay: (List<Track>, Int) -> Unit,
+) {
+    val tracks = remember(section.items) { section.items.filterIsInstance<SourceItem.TrackItem>().map { it.track } }
+    if (tracks.isEmpty()) return
+    val pagerState = rememberPagerState(pageCount = { tracks.size })
+    Column(Modifier.fillMaxWidth()) {
+        if (section.title.isNotBlank()) Row(
+            Modifier.fillMaxWidth().padding(horizontal = HomeRowHorizontalPadding, vertical = HomeSectionTitlePadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(section.title,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+            Text("${pagerState.currentPage + 1} / ${tracks.size}",
+                style = IosTypography.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            pageSpacing = 12.dp,
+            pageSize = PageSize.Fixed(140.dp),
+        ) { index ->
+            val track = tracks[index]
+            // 堆叠视觉：离当前卡越远越小、越透明，后面的卡整体下沉，形成层叠牌组
+            val depth = abs(index - (pagerState.currentPage + pagerState.currentPageOffsetFraction))
+                .coerceIn(0f, 2f)
+            Column(
+                Modifier
+                    .graphicsLayer {
+                        val scale = 1f - 0.06f * depth
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = 1f - 0.28f * depth
+                        translationY = (10.dp * depth).toPx()
+                    }
+                    .clickable { onPlay(tracks, index) },
+            ) {
+                val shape = ContinuousRoundedRectangle(14.dp)
+                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).homeArtworkBorder(shape)) {
+                    AsyncImage(track.artworkUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(track.title,
+                    style = IosTypography.caption,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+                Text(track.artists.joinToString(" / ") { it.name },
+                    style = IosTypography.caption,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
 
 private fun sourcePlaylistPlayCount(count: Long): String = when {
     count >= 100_000_000L -> String.format(java.util.Locale.getDefault(), "%.1f亿", count / 100_000_000.0)
