@@ -313,9 +313,11 @@ fun SourceFeedScreen(
                                 else Modifier.offset(y = (-10).dp).padding(horizontal = 16.dp, vertical = 6.dp))
                     }
                     if (kind == FeedKind.DISCOVER && categories.isNotEmpty()) item("source-feed-categories") {
+                        // 余音：顶部分区只留前三个和后三个，页面更简洁；其余分类通过搜索/歌单页仍可达
+                        val visibleCategories = if (categories.size > 6) categories.take(3) + categories.takeLast(3) else categories
                         LazyRow(Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(), contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = 16.dp)),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(categories, key = { it.id }) { category ->
+                            items(visibleCategories, key = { it.id }) { category ->
                                 val selected = category.id == (categoryId ?: categories.first().id)
                                 Text(category.title, style = IosTypography.subheadline,
                                     color = if (selected) Color.White else glassColors.content,
@@ -487,30 +489,11 @@ private fun LazyListScope.sourceDiscoverItems(
     onAction: (SourceFeedCard) -> Unit, loadingCard: String?,
     menuAnchorState: GlasmioMenuAnchorState,
 ) {
-    sections.forEachIndexed { sectionIndex, section ->
-        if (section.cards.isNotEmpty()) {
-            item("source-discover-cards:${section.id}") {
-                SourceFeedSectionContent(section, onOpen, onPlay, onMore, onAction, loadingCard, menuAnchorState = menuAnchorState)
-            }
-        } else if (section.layout == SourceFeedLayout.TRACKS) {
-            item("source-discover-tracks:${section.id}") {
-                SourceDiscoverDeck(section, onPlay)
-            }
-        } else {
-            val hero = section.items.firstOrNull()?.takeIf { featured && sectionIndex == 0 && it is SourceItem.PlaylistItem }
-            if (sections.size > 1 && section.title.isNotBlank()) item("source-discover-heading:${section.id}") {
-                Text(section.title, style = IosTypography.title2, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-            hero?.let { value -> item("source-discover-featured:${value.ref}") {
-                Box(Modifier.padding(horizontal = 16.dp)) { SourceDiscoverCard(value, true) { onOpen(value.ref) } }
-            } }
-            val entries = if (hero == null) section.items else section.items.drop(1)
-            items(entries.chunked(columns), key = { row -> "source-discover-grid:${section.id}:${row.first().ref}" }) { row ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { value -> Box(Modifier.weight(1f)) { SourceDiscoverCard(value, false) { onOpen(value.ref) } } }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
+    // 余音：发现页每个分区都是一张堆叠滑动牌组（最多 6 张卡），统一简洁风格
+    sections.forEach { section ->
+        if (section.cards.isEmpty() && section.items.isEmpty()) return@forEach
+        item("source-discover-deck:${section.id}") {
+            SourceDiscoverDeck(section, onOpen, onPlay, onAction)
         }
     }
 }
@@ -561,11 +544,35 @@ private fun SourceDiscoverCard(item: SourceItem, featured: Boolean, onClick: () 
 @Composable
 private fun SourceDiscoverDeck(
     section: SourceFeedSection,
+    onOpen: (ContentRef) -> Unit,
     onPlay: (List<Track>, Int) -> Unit,
+    onAction: (SourceFeedCard) -> Unit,
 ) {
-    val tracks = remember(section.items) { section.items.filterIsInstance<SourceItem.TrackItem>().map { it.track } }
-    if (tracks.isEmpty()) return
-    val pagerState = rememberPagerState(pageCount = { tracks.size })
+    // 统一为「封面卡」序列：有歌曲就点按即播，其余类型（歌单/专辑/歌手/卡片）点按进入详情
+    val entries = buildList {
+        if (section.cards.isNotEmpty()) {
+            section.cards.forEach { card ->
+                add(DeckEntry(card.id, card.artworkUrl, card.title, card.subtitle) { onAction(card) })
+            }
+        } else {
+            val tracks = section.items.filterIsInstance<SourceItem.TrackItem>().map { it.track }
+            if (tracks.isNotEmpty()) tracks.forEachIndexed { index, track ->
+                add(DeckEntry(track.ref.toString(), track.artworkUrl, track.title,
+                    track.artists.joinToString(" / ") { it.name }) { onPlay(tracks, index) })
+            } else section.items.forEach { value ->
+                add(DeckEntry(
+                    "${value.ref.providerId}:${value.ref.type.wireName}:${value.ref.contentId}",
+                    value.artworkUrl, value.title,
+                    when (value) {
+                        is SourceItem.PlaylistItem -> value.playlist.creatorName
+                        is SourceItem.AlbumItem -> value.album.artists.joinToString(" / ") { it.name }
+                        else -> ""
+                    }) { onOpen(value.ref) })
+            }
+        }
+    }.let { if (it.size > 6) it.take(3) + it.takeLast(3) else it }   // 前三后三，最多 6 张
+    if (entries.isEmpty()) return
+    val pagerState = rememberPagerState(pageCount = { entries.size })
     Column(Modifier.fillMaxWidth()) {
         if (section.title.isNotBlank()) Row(
             Modifier.fillMaxWidth().padding(horizontal = HomeRowHorizontalPadding, vertical = HomeSectionTitlePadding),
@@ -578,7 +585,7 @@ private fun SourceDiscoverDeck(
                 fontSize = 17.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
-            Text("${pagerState.currentPage + 1} / ${tracks.size}",
+            Text("${pagerState.currentPage + 1} / ${entries.size}",
                 style = IosTypography.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -587,9 +594,9 @@ private fun SourceDiscoverDeck(
             modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
             contentPadding = PaddingValues(horizontal = 20.dp),
             pageSpacing = 12.dp,
-            pageSize = PageSize.Fixed(140.dp),
+            pageSize = PageSize.Fixed(120.dp),
         ) { index ->
-            val track = tracks[index]
+            val entry = entries[index]
             // 堆叠视觉：离当前卡越远越小、越透明，后面的卡整体下沉，形成层叠牌组
             val depth = abs(index - (pagerState.currentPage + pagerState.currentPageOffsetFraction))
                 .coerceIn(0f, 2f)
@@ -602,19 +609,19 @@ private fun SourceDiscoverDeck(
                         alpha = 1f - 0.28f * depth
                         translationY = (10.dp * depth).toPx()
                     }
-                    .clickable { onPlay(tracks, index) },
+                    .clickable(onClick = entry.onTap),
             ) {
                 val shape = ContinuousRoundedRectangle(14.dp)
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).homeArtworkBorder(shape)) {
-                    AsyncImage(track.artworkUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    AsyncImage(entry.artwork, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(track.title,
+                Text(entry.title,
                     style = IosTypography.caption,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
-                Text(track.artists.joinToString(" / ") { it.name },
+                Text(entry.subtitle,
                     style = IosTypography.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -623,6 +630,14 @@ private fun SourceDiscoverDeck(
         }
     }
 }
+
+private class DeckEntry(
+    val key: String,
+    val artwork: String?,
+    val title: String,
+    val subtitle: String,
+    val onTap: () -> Unit,
+)
 
 private fun sourcePlaylistPlayCount(count: Long): String = when {
     count >= 100_000_000L -> String.format(java.util.Locale.getDefault(), "%.1f亿", count / 100_000_000.0)
