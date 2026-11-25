@@ -28,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -82,6 +83,8 @@ class RecommendFeedViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var generation = 0L
     private var firstBatch = true
+    /** 余音：本次启动的首批推荐是否还没加载过（用于把首屏请求让位给立即点播）。 */
+    private var startupDelayPending = true
 
     init {
         viewModelScope.launch {
@@ -123,6 +126,12 @@ class RecommendFeedViewModel @Inject constructor(
 
     private fun load(token: Long, providerId: String) {
         loadJob = viewModelScope.launch {
+            // 余音：启动后的首批推荐延迟 1.5 秒再请求，把 GD 限频额度和网络先让给用户
+            // 立即发起的播放解析/搜索，缓解「刚进 App 就点歌」时的起播卡顿。仅本次启动首个批次生效。
+            if (startupDelayPending && token == generation) {
+                startupDelayPending = false
+                delay(1500)
+            }
             registry.awaitInitialized()
             val added = mutableListOf<Track>()
             var failedRounds = 0
