@@ -345,10 +345,15 @@ fun SourceFeedScreen(
                         sourceBrowseStatus(state, state.sections.sumOf { if (it.cards.isNotEmpty()) it.cards.size else it.items.size },
                             emptyText = if (kind == FeedKind.HOME) "暂无推荐内容" else "暂无发现内容",
                             horizontalPadding = HomeRowHorizontalPadding,
+                            // 余音：发现页每个分区只展示最多 6 张卡，不再自动翻页（翻页内容看不到，还会多耗请求、触发异常）
+                            autoLoadMore = kind != FeedKind.DISCOVER,
+                            discoverSkeleton = kind == FeedKind.DISCOVER,
                             onRetry = viewModel::refresh, onLoadMore = viewModel::loadMore,
                             onConfigure = { openSourceConfiguration(viewModel.pluginId(), nav) },
                         )
-                    } else item("source-feed-switching") { SourceBrowseLoading() }
+                    } else item("source-feed-switching") {
+                        if (kind == FeedKind.DISCOVER) SourceDiscoverSkeleton() else SourceBrowseLoading()
+                    }
                 }
             }
         }
@@ -1147,12 +1152,15 @@ private fun LazyListScope.sourceBrowseStatus(
     horizontalPadding: Dp = 0.dp,
     emptySymbol: SfSymbol? = null,
     trackSkeleton: Boolean = false,
+    autoLoadMore: Boolean = true,
+    discoverSkeleton: Boolean = false,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onConfigure: () -> Unit,
 ) {
     if (state.loading) item("source-content-loading") {
-        if (trackSkeleton) SourceTrackBrowseLoading() else SourceBrowseLoading()
+        if (discoverSkeleton && itemCount == 0) SourceDiscoverSkeleton()
+        else if (trackSkeleton) SourceTrackBrowseLoading() else SourceBrowseLoading()
     }
     state.error?.let { error ->
         item("source-content-error") {
@@ -1165,13 +1173,13 @@ private fun LazyListScope.sourceBrowseStatus(
             }
         }
     }
-    if (!state.loading && state.error == null && !state.hasMore && itemCount == 0) item("source-content-empty") {
+    if (!state.loading && state.error == null && (!state.hasMore || !autoLoadMore) && itemCount == 0) item("source-content-empty") {
         if (emptySymbol != null) EmptyState(emptyText, emptySymbol)
         else GlasmioGroupedList(Modifier.padding(horizontal = horizontalPadding, vertical = 10.dp)) {
             GlasmioListRow(title = emptyText, showTopSeparator = false, showDisclosure = false)
         }
     }
-    if (!state.loading && state.hasMore && state.error == null) item("source-content-next:${state.nextOffset}") {
+    if (autoLoadMore && !state.loading && state.hasMore && state.error == null) item("source-content-next:${state.nextOffset}") {
         LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision, state.nextOffset, state.nextCursor) {
             onLoadMore()
         }
@@ -1183,6 +1191,30 @@ private fun LazyListScope.sourceBrowseStatus(
 private fun SourceBrowseLoading() {
     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = LocalGlassColors.current.accent, strokeWidth = 2.dp)
+    }
+}
+
+/** 余音：发现页加载占位——与堆叠牌组同尺寸（标题 + 120dp 方形封面 + 两行文字），避免空白和布局跳动。 */
+@Composable
+private fun SourceDiscoverSkeleton() {
+    val shape = ContinuousRoundedRectangle(14.dp)
+    val tone = MaterialTheme.colorScheme.onSurface
+    ShimmerHost(Modifier.fillMaxWidth()) {
+        repeat(2) {
+            Box(Modifier.padding(horizontal = HomeRowHorizontalPadding, vertical = HomeSectionTitlePadding)
+                .width(96.dp).height(18.dp).clip(ContinuousRoundedRectangle(6.dp)).background(tone))
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(3) {
+                    Column(Modifier.width(120.dp)) {
+                        Box(Modifier.size(120.dp).clip(shape).background(tone))
+                        Spacer(Modifier.height(8.dp))
+                        Box(Modifier.fillMaxWidth(0.8f).height(11.dp).clip(ContinuousRoundedRectangle(4.dp)).background(tone))
+                        Spacer(Modifier.height(5.dp))
+                        Box(Modifier.fillMaxWidth(0.55f).height(11.dp).clip(ContinuousRoundedRectangle(4.dp)).background(tone))
+                    }
+                }
+            }
+        }
     }
 }
 

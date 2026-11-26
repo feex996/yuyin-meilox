@@ -548,6 +548,13 @@ class SourceContentViewModel internal constructor(
                         restoreCachedPage(requested, owner, token)) return
                 }
             }
+            // 余音：发现页等分页追加失败时（某个分区的下一页异常），只停止该分区继续翻页，
+            // 已显示的分区照常保留，不再在页面后半段整块显示「音源返回异常」。
+            if (token == generation && append && !authFailure && requested is SourceContentRequest.Feed &&
+                requested.kind != FeedKind.HOME && state.value.sections.any { it.items.isNotEmpty() || it.cards.isNotEmpty() }) {
+                mutableState.value = state.value.copy(loading = false, refreshing = false, error = null, hasMore = false, nextCursor = null)
+                return
+            }
             if (token == generation) mutableState.value = state.value.copy(loading = false, refreshing = false, error = code,
                 account = state.value.account.takeUnless { authFailure },
                 hasMore = state.value.hasMore && code != SourceErrorCode.INVALID_RESPONSE)
