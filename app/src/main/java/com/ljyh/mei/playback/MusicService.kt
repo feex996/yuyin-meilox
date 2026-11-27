@@ -45,6 +45,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
@@ -243,6 +244,13 @@ class MusicService : MediaLibraryService(),
 
     private val playbackFailures = PlaybackFailureTracker()
     private var failureProgressJob: Job? = null
+    /** 余音：预解析下一首的直链（跨境网络下解析一次要 1~4 秒，提前做好切歌就不卡）。 */
+    private var nextTrackPrefetchJob: Job? = null
+    /**
+     * 余音：本次运行内一旦出现「无损/更高音质卡住」，之后的在线播放最高只请求极高（320k），宁可降音质也不卡。
+     * 不改用户设置；重启 App 或手动切换音质后恢复。
+     */
+    @Volatile private var smoothQualityCap = false
     private var sourceRecoveryJob: Job? = null
     private var sourceRecoveryMediaId: String? = null
     private var sourceRecoveryEntryId: String? = null
@@ -324,6 +332,7 @@ class MusicService : MediaLibraryService(),
         val firstDeck = ExoPlayer.Builder(this)
             .experimentalSetDynamicSchedulingEnabled(false)
             .setStuckBufferingDetectionTimeoutMs(STUCK_BUFFERING_TIMEOUT_MS)
+            .setLoadControl(createStreamingLoadControl())
             // Keep next-period loading on the deck that will consume those bytes.
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(createDataSourceFactory())
@@ -345,6 +354,7 @@ class MusicService : MediaLibraryService(),
         val secondDeck = ExoPlayer.Builder(this)
             .experimentalSetDynamicSchedulingEnabled(false)
             .setStuckBufferingDetectionTimeoutMs(STUCK_BUFFERING_TIMEOUT_MS)
+            .setLoadControl(createStreamingLoadControl())
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(createDataSourceFactory())
                     .setLoadErrorHandlingPolicy(MusicLoadErrorHandlingPolicy()),
@@ -450,9 +460,9 @@ class MusicService : MediaLibraryService(),
             scope = scope,
             sourceResolver = { item ->
                 item.metadata?.let { mediaUriProvider.rememberTrack(it, item.mediaId) }
-                val quality = context.dataStore.data.firstOrNull()?.get(MusicQualityKey)
+                val quality = streamingQuality(context.dataStore.data.firstOrNull()?.get(MusicQualityKey)
                     ?.lowercase(getDefault())
-                    ?: MusicQuality.EXHIGH.text
+                    ?: MusicQuality.EXHIGH.text)
                 mediaUriProvider.resolveMediaSource(item.mediaId, quality, allowDolby = supportsDolby)
             },
         )
@@ -967,6 +977,11 @@ class MusicService : MediaLibraryService(),
         } finally {
             isRefreshingPlaybackSource = false
         }
+    }
+
+    /** 用户手动选了音质：撤销本次运行里因卡顿临时加的 320k 上限。 */
+    fun clearSmoothQualityCap() {
+        smoothQualityCap = false
     }
 
     fun resetRejectedPlaybackSources() {
@@ -1765,9 +1780,9 @@ class MusicService : MediaLibraryService(),
 
         ResolvingDataSource.Factory(CacheManager.getPlaybackDataSourceFactory(context, simpleCache)) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media key")
-            val quality = context.dataStore[MusicQualityKey]
+            val quality = streamingQuality(context.dataStore[MusicQualityKey]
                 ?.let(::normalizePlaybackQuality)
-                ?: MusicQuality.EXHIGH.text
+                ?: MusicQuality.EXHIGH.text)
             val localSource = runBlocking { mediaUriProvider.resolveLocalSource(mediaId) }
             if (localSource != null) {
                 Timber.tag("ResolvingDataSource").d("Using local source for mediaId: %s", mediaId)
@@ -1791,6 +1806,86 @@ class MusicService : MediaLibraryService(),
                 resolvedMediaDataSpec(dataSpec, resolved)
             }
         }.createDataSource()
+    }
+
+    /**
+     * 余音：流媒体缓冲参数。默认 Media3 只缓冲 50 秒、恢复播放只要 2 秒数据，跨境/VPN 网络抖动时会频繁「播一下停一下」。
+     * 音频码率很低（320k ≈ 40 KB/s），多缓冲几分钟只占几 MB：至少保持 90 秒、最多 4 分钟；
+     * 卡顿后攒够 5 秒再继续，避免反复断续。两个播放器（交叉淡入用）各用一个实例。
+     */
+    private fun createStreamingLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMsForStreaming(
+            STREAM_MIN_BUFFER_MS, STREAM_MAX_BUFFER_MS,
+            STREAM_BUFFER_FOR_PLAYBACK_MS, STREAM_BUFFER_AFTER_REBUFFER_MS,
+        )
+        .setTargetBufferBytes(STREAM_TARGET_BUFFER_BYTES)
+        .setPrioritizeTimeOverSizeThresholdsForStreaming(true)
+        .build()
+
+    /** 网络慢时的音质上限：触发过卡顿降级后，无损及以上一律按极高请求。 */
+    private fun streamingQuality(quality: String): String {
+        if (!smoothQualityCap) return quality
+        val requested = MusicQuality.entries.firstOrNull { it.text == normalizePlaybackQuality(quality) } ?: return quality
+        return if (requested.ordinal > MusicQuality.EXHIGH.ordinal) MusicQuality.EXHIGH.text else quality
+    }
+
+    /** 下一首提前解析直链（失败不影响任何东西，真正播放时会再按正常流程解析/回退）。 */
+    private fun prefetchNextTrackSource() {
+        nextTrackPrefetchJob?.cancel()
+        nextTrackPrefetchJob = scope.launch {
+            delay(NEXT_TRACK_PREFETCH_DELAY_MS)
+            if (!player.playWhenReady) return@launch
+            val nextIndex = player.nextMediaItemIndex
+            if (nextIndex !in 0 until player.mediaItemCount || nextIndex == player.currentMediaItemIndex) return@launch
+            val next = player.getMediaItemAt(nextIndex)
+            val mediaId = next.mediaId.takeIf(String::isNotBlank) ?: return@launch
+            try {
+                next.metadata?.let { mediaUriProvider.rememberTrack(it, mediaId) }
+                val quality = streamingQuality(context.dataStore.data.firstOrNull()?.get(MusicQualityKey)
+                    ?.let(::normalizePlaybackQuality) ?: MusicQuality.EXHIGH.text)
+                val cached = withContext(Dispatchers.IO) {
+                    fullyCachedPlaybackKey(CacheManager.getSimpleCache(context), mediaId, quality)
+                }
+                if (cached != null) return@launch
+                withContext(Dispatchers.IO) { mediaUriProvider.resolveMediaSource(mediaId, quality, allowDolby = supportsDolby) }
+                Timber.tag("MusicService").d("Prefetched next source: %s", mediaId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.tag("MusicService").d("Next source prefetch skipped: %s", error.javaClass.simpleName)
+            }
+        }
+    }
+
+    /**
+     * 当前歌曲放不了（解析失败、重试用尽、持续卡住）时：设置允许跳过就提示并自动跳下一首，否则暂停并提示。
+     * 不再停在原地「转圈」。
+     */
+    private fun skipFailedTrack(reason: String) {
+        if (!skipUnavailableTracks) {
+            pauseFailedPlayback(reason)
+            return
+        }
+        val limitReached = playbackFailures.recordFailure()
+        Timber.tag("MusicService").e("Play failure detected. Count: %s", playbackFailures.consecutiveFailures)
+        if (limitReached) {
+            Toast.makeText(context, "播放失败，已连续跳过多首歌曲，请检查网络或切换音源", Toast.LENGTH_LONG).show()
+            player.pause()
+            player.stop()
+            return
+        }
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex in 0 until player.mediaItemCount && nextIndex != player.currentMediaItemIndex) {
+            val nextItem = player.getMediaItemAt(nextIndex)
+            playbackFailures.expectAutomaticSkip(nextItem.queueEntryId ?: nextItem.mediaId)
+            Toast.makeText(context, "$reason，已跳到下一首", Toast.LENGTH_SHORT).show()
+            player.seekToDefaultPosition(nextIndex)
+            player.prepare()
+        } else {
+            player.pause()
+            player.stop()
+            Toast.makeText(context, "播放结束，部分歌曲无法加载", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun effectivePlaybackCacheQuality(quality: String): String =
@@ -1932,13 +2027,19 @@ class MusicService : MediaLibraryService(),
         }
         if (isTemporaryPlaybackFailure(error.errorCode, error.cause)) {
             if (!scheduleSourceRecovery(preserveCache = true, temporaryFailure = true)) {
-                pauseFailedPlayback("播放源暂时不可用，请稍后重试")
+                skipFailedTrack("当前歌曲加载失败")
             }
             return
         }
         if (stalled) {
+            // 余音：无损/Hi-Res 等大文件卡住时，先降到极高（320k）再续播，宁可降音质也不卡。
+            val stalledQuality = currentMusicQuality.value
+            if (!smoothQualityCap && stalledQuality != null && stalledQuality.ordinal > MusicQuality.EXHIGH.ordinal) {
+                smoothQualityCap = true
+                Toast.makeText(context, "网络较慢，已临时切到极高音质以保证流畅", Toast.LENGTH_SHORT).show()
+            }
             if (!scheduleSourceRecovery(preserveCache = true)) {
-                pauseFailedPlayback("播放暂时卡住，请重试")
+                skipFailedTrack("当前歌曲加载太慢")
             }
             return
         }
@@ -1980,29 +2081,7 @@ class MusicService : MediaLibraryService(),
                 if (scheduleSourceRecovery(preserveCache = true)) return
                 if (mediaUriProvider.rejectCurrentSource(mediaId) && scheduleSourceRecovery(qualityFallback = true)) return
             }
-            if (!skipUnavailableTracks) {
-                pauseFailedPlayback("当前歌曲暂无可用音源")
-                return
-            }
-            val limitReached = playbackFailures.recordFailure()
-            Timber.tag("MusicService").e("Play failure detected. Count: %s", playbackFailures.consecutiveFailures)
-            if (limitReached) {
-                Toast.makeText(context, "播放失败，已连续跳过多首歌曲", Toast.LENGTH_LONG).show()
-                player.pause()
-                player.stop()
-                return
-            }
-            val nextIndex = player.nextMediaItemIndex
-            if (nextIndex in 0 until player.mediaItemCount && nextIndex != player.currentMediaItemIndex) {
-                val nextItem = player.getMediaItemAt(nextIndex)
-                playbackFailures.expectAutomaticSkip(nextItem.queueEntryId ?: nextItem.mediaId)
-                player.seekToDefaultPosition(nextIndex)
-                player.prepare()
-            } else {
-                player.pause()
-                player.stop()
-                Toast.makeText(context, "播放结束，部分歌曲无法加载", Toast.LENGTH_SHORT).show()
-            }
+            skipFailedTrack("当前歌曲暂无可用音源")
         } else {
             Toast.makeText(context, "播放出错: ${error.errorCodeName}", Toast.LENGTH_SHORT).show()
         }
@@ -2109,6 +2188,7 @@ class MusicService : MediaLibraryService(),
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (isRefreshingPlaybackSource) return
         mediaItem?.metadata?.let { mediaUriProvider.rememberTrack(it, mediaItem.mediaId) }
+        prefetchNextTrackSource()
         playbackFailures.onMediaItemTransition(mediaItem?.queueEntryId ?: mediaItem?.mediaId, reason)
         if (mediaItem?.mediaId != qualityMediaId) resetCurrentQualityState(mediaItem?.mediaId)
         recordPlaybackDuration(
@@ -2175,7 +2255,13 @@ class MusicService : MediaLibraryService(),
         private const val MAX_SOURCE_RECOVERY_ATTEMPTS = 1
         private const val MAX_TEMPORARY_RECOVERY_ATTEMPTS = 2
         private const val TEMPORARY_RECOVERY_DELAY_MS = 1_000L
-        private const val STUCK_BUFFERING_TIMEOUT_MS = 30_000
+        private const val STUCK_BUFFERING_TIMEOUT_MS = 20_000
+        private const val STREAM_MIN_BUFFER_MS = 90_000
+        private const val STREAM_MAX_BUFFER_MS = 240_000
+        private const val STREAM_BUFFER_FOR_PLAYBACK_MS = 1_500
+        private const val STREAM_BUFFER_AFTER_REBUFFER_MS = 5_000
+        private const val STREAM_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
+        private const val NEXT_TRACK_PREFETCH_DELAY_MS = 4_000L
         private const val PLAYBACK_SNAPSHOT_INTERVAL_MS = 5_000L
         private const val FAILURE_PROGRESS_SAMPLE_MS = 500L
         const val ACTION_CANCEL_SLEEP_TIMER = "com.ljyh.mei.action.CANCEL_SLEEP_TIMER"

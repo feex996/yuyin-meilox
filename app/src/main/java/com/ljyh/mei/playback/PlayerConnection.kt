@@ -275,6 +275,7 @@ class PlayerConnection(
             // Keep the playlist intact, but force every source that may have been
             // prepared at the previous quality to be discarded.
             if (preferOnlineSource) service.mediaUriProvider.preferOnlineSource(mediaId)
+            service.clearSmoothQualityCap()
             service.resetRejectedPlaybackSources()
             service.refreshPlaybackSource(index, position, shouldPlay, refreshQueuedSources = true)
         }

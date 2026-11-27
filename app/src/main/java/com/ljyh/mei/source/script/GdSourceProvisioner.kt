@@ -17,6 +17,7 @@ internal object GdSourceProvisioner {
     const val GD_ID = "xyz.gdstudio.music"
     private const val MARKER = ".gd-default-v1"
     private const val SEARCH_MARKER = ".gd-search-follow-v1"
+    private const val FALLBACK_MARKER = ".fallback-chain-v2"
     private const val ASSET = "music-sources/gd-music.meisource"
     private val allowed = setOf("manifest.json", "index.js", "LICENSE", "NOTICE")
 
@@ -102,6 +103,32 @@ internal object GdSourceProvisioner {
         val manifest = PluginManifest.parse(File(target, "manifest.json").readText())
         check(manifest.id == GD_ID)
         return manifest
+    }
+
+    /**
+     * 一次性迁移（余音 yuyin-16 起）：保证播放回退链覆盖内置的网易云、GD音乐台、QQ 音乐，
+     * 原始音源放不了时依次换源匹配同一首，而不是停在原地。
+     * - 只在已有回退顺序末尾追加缺失的项（已安装且未被用户移除的源），不改变已有顺序；
+     * - 不改默认浏览/搜索音源，也不动「优先原始音源」开关；
+     * - 打开自动切换：这正是 GD 首次预装时的默认值，播放失败的场景需要它。
+     */
+    suspend fun ensureFallbackChain(context: Context, root: File) {
+        val marker = File(root, FALLBACK_MARKER)
+        if (marker.exists()) return
+        val netease = File(root, BundledSourceProvisioner.NETEASE_ID).isDirectory
+        val gd = File(root, GD_ID).isDirectory
+        val qq = File(root, QqSourceProvisioner.QQ_ID).isDirectory
+        val additions = listOfNotNull(
+            "script:${BundledSourceProvisioner.NETEASE_ID}:default".takeIf { netease },
+            "script:$GD_ID:default".takeIf { gd },
+            "script:${QqSourceProvisioner.QQ_ID}:default".takeIf { qq },
+        )
+        if (additions.isNotEmpty()) {
+            com.ljyh.mei.source.core.SourcePreferences(context.dataStore).update {
+                it.copy(autoFallbackEnabled = true, fallbackOrder = (it.fallbackOrder + additions).distinct())
+            }
+        }
+        marker.writeText("done")
     }
 
     fun removed(root: File) = mark(root, "removed")

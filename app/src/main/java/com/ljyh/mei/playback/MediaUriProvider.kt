@@ -92,6 +92,13 @@ class MediaUriProvider @Inject constructor(
     )
 
     private val urlCache = ConcurrentHashMap<String, CachedUrl>()
+    /**
+     * 余音：整条回退链的解析结果缓存（含回退到其他音源的结果），直到直链过期前 30 秒、最长 10 分钟。
+     * ResolvingDataSource 每次 open（起播、seek、断点续传、预加载）都会重新解析；没有这层缓存时，
+     * 原始音源拿不到直链的歌每次都要重走「原始源失败 → 回退源搜索匹配 → 解析」，跨境网络下每次多等数秒。
+     */
+    private data class CachedResolution(val expiresAtMs: Long, val stateVersion: Long, val generation: String, val source: ResolvedMediaSource)
+    private val resolutionCache = ConcurrentHashMap<String, CachedResolution>()
     private val availableQualityCache = ConcurrentHashMap<String, AvailableQualities>()
     private val resolvedSources = ConcurrentHashMap<String, ResolvedMediaSource>()
     private val trackMetadata = ConcurrentHashMap<TrackRef, Track>()
@@ -221,6 +228,17 @@ class MediaUriProvider @Inject constructor(
         } else {
             quality
         }
+        val generation = router.registry.providers.value.joinToString { "${it.instanceId.value}:${it.version}:${it.status}" }
+        val resolutionKey = "$mediaId|${normalizePlaybackQuality(fallbackQuality)}"
+        resolutionCache[resolutionKey]?.let { cached ->
+            val usable = cached.expiresAtMs > System.currentTimeMillis() && cached.stateVersion == stateVersion &&
+                cached.generation == generation && cached.source.sourceIdentity?.let { sourceIsRejected(mediaId, it) } != true
+            if (usable) return synchronized(qualityStateLock) {
+                ensureCurrentState(stateVersion)
+                rememberResolvedSource(mediaId, cached.source)
+            }
+            resolutionCache.remove(resolutionKey, cached)
+        }
         val resolution = try { playbackResolver.resolve(
             track, fallbackQuality,
             excludedResources = rejectedSources[mediaId]?.mapNotNull {
@@ -235,13 +253,24 @@ class MediaUriProvider @Inject constructor(
             val identity = java.util.Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(audioResourceIdentity(resolution).toByteArray(Charsets.UTF_8))
             if (sourceIsRejected(mediaId, identity)) throw SourceNotFoundException("Playback resource was rejected")
-            rememberResolvedSource(mediaId, ResolvedMediaSource(
+            val source = ResolvedMediaSource(
                 uri = resolution.resource.uri.toUri(), actualQuality = resolution.resource.quality,
                 cacheKey = if (resolution.resource.cachePolicy == CachePolicy.ALLOW) resolvedPlaybackCacheKey(resolution) else null,
                 sourceIdentity = identity, contentLength = resolution.resource.contentLength,
                 headers = resolution.resource.headers, resolution = resolution,
                 cachePolicy = resolution.resource.cachePolicy, expiresAtMs = resolution.resource.expiresAtMs,
-            ))
+            )
+            val now = System.currentTimeMillis()
+            val cacheUntil = minOf(now + RESOLUTION_CACHE_MAX_MS,
+                resolution.resource.expiresAtMs?.minus(RESOLUTION_EXPIRY_MARGIN_MS) ?: (now + DEFAULT_URL_CACHE_TTL_MS))
+            if (cacheUntil > now) {
+                resolutionCache[resolutionKey] = CachedResolution(cacheUntil, stateVersion, generation, source)
+                if (resolutionCache.size > 256) {
+                    resolutionCache.entries.sortedBy { it.value.expiresAtMs }.take(resolutionCache.size - 256)
+                        .forEach { resolutionCache.remove(it.key, it.value) }
+                }
+            }
+            rememberResolvedSource(mediaId, source)
         }
     }
 
@@ -271,7 +300,10 @@ class MediaUriProvider @Inject constructor(
         if (SourceCapability.PLAYBACK !in owner.capabilities) throw SourceException(SourceErrorCode.UNSUPPORTED)
         val account = (owner as? AccountRevisionCapability)?.accountRevision?.firstOrNull()
         val requestedQuality = normalizePlaybackQuality(quality)
+        // 余音：GD / QQ 插件自己决定实际码率（拿不到就在插件内回退），对它们逐级降音质重试只会把同一条
+        // 失败链路（GD 还有 5 分钟 50 次限频）再跑一遍，让「放不了」的歌多卡十几秒才轮到其他音源。
         val fallbacks = playbackQualityFallbacks(requestedQuality, allowDolby = forDownload || allowDolby)
+            .let { if (ref.providerId in SINGLE_ATTEMPT_PROVIDERS) it.take(1) else it }
         val cacheRequestedKey = fallbacks.firstOrNull() ?: requestedQuality
         for (attemptedQuality in fallbacks) {
             val cacheKey = "$mediaId:$attemptedQuality"
@@ -407,6 +439,7 @@ class MediaUriProvider @Inject constructor(
         qualityStateVersion.incrementAndGet()
         accountStateVersion.incrementAndGet()
         urlCache.clear()
+        resolutionCache.clear()
         availableQualityCache.clear()
         rejectedSources.clear()
         resolvedSources.clear()
@@ -421,6 +454,10 @@ class MediaUriProvider @Inject constructor(
         urlCache.keys
             .filter { it.startsWith(prefix) }
             .forEach(urlCache::remove)
+        val resolutionPrefix = "${mediaId.trim()}|"
+        resolutionCache.keys
+            .filter { it.startsWith(resolutionPrefix) }
+            .forEach(resolutionCache::remove)
     }
 
     private suspend fun verifyAvailableQuality(
@@ -585,6 +622,10 @@ class MediaUriProvider @Inject constructor(
 
     private companion object {
         const val DEFAULT_URL_CACHE_TTL_MS = 5 * 60 * 1_000L
+        const val RESOLUTION_CACHE_MAX_MS = 10 * 60 * 1_000L
+        const val RESOLUTION_EXPIRY_MARGIN_MS = 30 * 1_000L
+        /** GD音乐台、QQ 音乐插件：一次解析内部已处理音质与回退，不做逐级降音质重试。 */
+        val SINGLE_ATTEMPT_PROVIDERS = setOf("xyz.gdstudio.music", "qqmusic")
         const val AVAILABLE_QUALITY_CACHE_TTL_MS = 60 * 1_000L
         const val QUALITY_PROBE_CONCURRENCY = 3
     }

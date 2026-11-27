@@ -83,6 +83,10 @@ class ScriptPluginManager @Inject constructor(
         try { QqSourceProvisioner.ensure(context, root) }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { }
+        // 余音：回退链补齐网易云 → GD音乐台 → QQ 音乐（一次性，只追加，不改默认源）。
+        try { GdSourceProvisioner.ensureFallbackChain(context, root) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { }
         // 余音：App 内置了更新版本的 GD音乐台 时，用同一套安装事务原地升级（未被用户移除才升级；保留配置/启用状态）。
         if (GdSourceProvisioner.GD_ID !in incomplete) {
             try { upgradeBundledGdLocked() }
